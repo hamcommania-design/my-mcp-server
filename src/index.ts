@@ -1,58 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { InferenceClient } from '@huggingface/inference'
 
-// Create server instance
-const server = new McpServer({
-    name: 'YOUR_SERVER_NAME',
-    version: '1.0.0',
-    capabilities: {
-        tools: {},
-        resources: {},
-        prompts: {}
-    }
+// Optional: 서버 설정 스키마 (API 키 등 사용자 설정이 필요한 경우)
+export const configSchema = z.object({
+    hfToken: z.string().optional().describe('Hugging Face API Token (이미지 생성 기능에 필요)')
 })
-
-// code_review 프롬프트 등록
-server.prompt(
-    'code_review',
-    '사용자로부터 코드를 받아 코드 리뷰를 수행합니다.',
-    {
-        code: z.string().describe('리뷰할 코드'),
-        language: z.string().optional().describe('프로그래밍 언어 (선택사항)')
-    },
-    async ({ code, language }) => {
-        const langInfo = language ? `\n프로그래밍 언어: ${language}` : ''
-        
-        return {
-            messages: [
-                {
-                    role: 'user' as const,
-                    content: {
-                        type: 'text' as const,
-                        text: `다음 코드에 대해 상세한 코드 리뷰를 수행해주세요.${langInfo}
-
-## 리뷰 항목
-1. **코드 품질**: 가독성, 명명 규칙, 코드 구조
-2. **버그 및 오류**: 잠재적인 버그나 논리적 오류
-3. **성능**: 성능 개선이 필요한 부분
-4. **보안**: 보안 취약점이 있는지 확인
-5. **베스트 프랙티스**: 해당 언어/프레임워크의 모범 사례 준수 여부
-6. **개선 제안**: 구체적인 개선 방안
-
-## 리뷰할 코드
-\`\`\`${language || ''}
-${code}
-\`\`\`
-
-위 항목들을 기반으로 자세하고 건설적인 피드백을 제공해주세요.`
-                    }
-                }
-            ]
-        }
-    }
-)
 
 // 가짜 서버 정보 데이터
 const fakeServers = [
@@ -98,80 +51,6 @@ const fakeServers = [
     }
 ]
 
-// 서버 목록 리소스 등록
-server.resource(
-    'servers-list',
-    'server://list',
-    async (uri) => {
-        return {
-            contents: [
-                {
-                    uri: uri.href,
-                    mimeType: 'application/json',
-                    text: JSON.stringify(fakeServers, null, 2)
-                }
-            ]
-        }
-    }
-)
-
-// 개별 서버 정보 리소스 템플릿 등록
-server.resource(
-    'server-info',
-    'server://info/{serverId}',
-    async (uri) => {
-        const serverId = uri.pathname.split('/').pop()
-        const serverInfo = fakeServers.find(s => s.id === serverId)
-        
-        if (!serverInfo) {
-            return {
-                contents: [
-                    {
-                        uri: uri.href,
-                        mimeType: 'application/json',
-                        text: JSON.stringify({ error: `서버를 찾을 수 없습니다: ${serverId}` })
-                    }
-                ]
-            }
-        }
-        
-        return {
-            contents: [
-                {
-                    uri: uri.href,
-                    mimeType: 'application/json',
-                    text: JSON.stringify(serverInfo, null, 2)
-                }
-            ]
-        }
-    }
-)
-
-// 서버 상태 요약 리소스 등록
-server.resource(
-    'servers-status',
-    'server://status',
-    async (uri) => {
-        const statusSummary = {
-            total: fakeServers.length,
-            running: fakeServers.filter(s => s.status === 'running').length,
-            stopped: fakeServers.filter(s => s.status === 'stopped').length,
-            maintenance: fakeServers.filter(s => s.status === 'maintenance').length,
-            lastUpdated: new Date().toISOString()
-        }
-        
-        return {
-            contents: [
-                {
-                    uri: uri.href,
-                    mimeType: 'application/json',
-                    text: JSON.stringify(statusSummary, null, 2)
-                }
-            ]
-        }
-    }
-)
-
 // 언어별 인사말 매핑
 const greetings: Record<string, (name: string) => string> = {
     korean: (name) => `안녕하세요, ${name}님! 반갑습니다!`,
@@ -182,42 +61,6 @@ const greetings: Record<string, (name: string) => string> = {
     french: (name) => `Bonjour, ${name}! Enchanté de vous rencontrer!`,
     german: (name) => `Hallo, ${name}! Freut mich, Sie kennenzulernen!`,
 }
-
-// greeting 도구 등록
-server.tool(
-    'greeting',
-    '사용자의 이름과 언어를 입력받아 해당 언어로 인사말을 반환합니다.',
-    {
-        name: z.string().describe('인사할 사용자의 이름'),
-        language: z.enum(['korean', 'english', 'japanese', 'chinese', 'spanish', 'french', 'german'])
-            .describe('인사말에 사용할 언어 (korean, english, japanese, chinese, spanish, french, german)')
-    },
-    async ({ name, language }) => {
-        const greetingFn = greetings[language]
-        
-        if (!greetingFn) {
-            return {
-                content: [
-                    {
-                        type: 'text' as const,
-                        text: `지원하지 않는 언어입니다: ${language}`
-                    }
-                ]
-            }
-        }
-
-        const message = greetingFn(name)
-        
-        return {
-            content: [
-                {
-                    type: 'text' as const,
-                    text: message
-                }
-            ]
-        }
-    }
-)
 
 // 지역별 타임존 매핑
 const timezones: Record<string, string> = {
@@ -308,161 +151,330 @@ const timezones: Record<string, string> = {
     '뉴질랜드': 'Pacific/Auckland',
 }
 
-// get_time 도구 등록
-server.tool(
-    'get_time',
-    '지역 이름을 입력받아 해당 지역의 현재 시간을 반환합니다.',
-    {
-        region: z.string().describe('시간을 알고 싶은 지역 이름 (예: seoul, 서울, tokyo, 도쿄, new_york, 뉴욕, london, 런던 등)')
-    },
-    async ({ region }) => {
-        const normalizedRegion = region.toLowerCase().trim().replace(/\s+/g, '_')
-        const timezone = timezones[normalizedRegion]
-        
-        if (!timezone) {
-            const availableRegions = Object.keys(timezones).join(', ')
-            return {
-                content: [
-                    {
-                        type: 'text' as const,
-                        text: `지원하지 않는 지역입니다: ${region}\n\n지원하는 지역 목록:\n${availableRegions}`
-                    }
-                ]
-            }
+// Required: Smithery에서 요구하는 createServer 함수를 default export
+export default function createServer({ config }: { config: z.infer<typeof configSchema> }) {
+    // Create server instance
+    const server = new McpServer({
+        name: 'my-mcp-server',
+        version: '1.0.0',
+        capabilities: {
+            tools: {},
+            resources: {},
+            prompts: {}
         }
+    })
 
-        const now = new Date()
-        const options: Intl.DateTimeFormatOptions = {
-            timeZone: timezone,
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            weekday: 'long',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        }
-        
-        const formatter = new Intl.DateTimeFormat('ko-KR', options)
-        const formattedTime = formatter.format(now)
-        
-        return {
-            content: [
-                {
-                    type: 'text' as const,
-                    text: `📍 ${region} (${timezone})\n🕐 현재 시간: ${formattedTime}`
-                }
-            ]
-        }
-    }
-)
-
-// calc 도구 등록
-server.tool(
-    'calc',
-    '두 개의 숫자와 하나의 연산자를 입력받아 계산 결과를 반환합니다.',
-    {
-        num1: z.number().describe('첫 번째 숫자'),
-        num2: z.number().describe('두 번째 숫자'),
-        operator: z.enum(['+', '-', '*', '/']).describe('연산자 (+, -, *, /)')
-    },
-    async ({ num1, num2, operator }) => {
-        let result: number
-
-        switch (operator) {
-            case '+':
-                result = num1 + num2
-                break
-            case '-':
-                result = num1 - num2
-                break
-            case '*':
-                result = num1 * num2
-                break
-            case '/':
-                if (num2 === 0) {
-                    return {
-                        content: [
-                            {
-                                type: 'text' as const,
-                                text: '오류: 0으로 나눌 수 없습니다.'
-                            }
-                        ]
-                    }
-                }
-                result = num1 / num2
-                break
-        }
-
-        return {
-            content: [
-                {
-                    type: 'text' as const,
-                    text: `${num1} ${operator} ${num2} = ${result}`
-                }
-            ]
-        }
-    }
-)
-
-// generate_image 도구 등록
-server.tool(
-    'generate_image',
-    '텍스트 프롬프트를 입력받아 AI로 이미지를 생성합니다.',
-    {
-        prompt: z.string().describe('생성할 이미지에 대한 설명 (영어 권장)')
-    },
-    async ({ prompt }) => {
-        try {
-            const client = new InferenceClient(process.env.HF_TOKEN)
-            
-            const image = await client.textToImage({
-                provider: 'hf-inference',
-                model: 'black-forest-labs/FLUX.1-schnell',
-                inputs: prompt,
-                parameters: { num_inference_steps: 5 }
-            }) as unknown as Blob
-            
-            // Blob을 ArrayBuffer로 변환 후 base64로 인코딩
-            const arrayBuffer = await image.arrayBuffer()
-            const base64Data = Buffer.from(arrayBuffer).toString('base64')
+    // code_review 프롬프트 등록
+    server.prompt(
+        'code_review',
+        '사용자로부터 코드를 받아 코드 리뷰를 수행합니다.',
+        {
+            code: z.string().describe('리뷰할 코드'),
+            language: z.string().optional().describe('프로그래밍 언어 (선택사항)')
+        },
+        async ({ code, language }) => {
+            const langInfo = language ? `\n프로그래밍 언어: ${language}` : ''
             
             return {
-                content: [
+                messages: [
                     {
-                        type: 'image' as const,
-                        data: base64Data,
-                        mimeType: 'image/png',
-                        annotations: {
-                            audience: ['user'],
-                            priority: 0.9
+                        role: 'user' as const,
+                        content: {
+                            type: 'text' as const,
+                            text: `다음 코드에 대해 상세한 코드 리뷰를 수행해주세요.${langInfo}
+
+## 리뷰 항목
+1. **코드 품질**: 가독성, 명명 규칙, 코드 구조
+2. **버그 및 오류**: 잠재적인 버그나 논리적 오류
+3. **성능**: 성능 개선이 필요한 부분
+4. **보안**: 보안 취약점이 있는지 확인
+5. **베스트 프랙티스**: 해당 언어/프레임워크의 모범 사례 준수 여부
+6. **개선 제안**: 구체적인 개선 방안
+
+## 리뷰할 코드
+\`\`\`${language || ''}
+${code}
+\`\`\`
+
+위 항목들을 기반으로 자세하고 건설적인 피드백을 제공해주세요.`
                         }
                     }
                 ]
             }
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+        }
+    )
+
+    // 서버 목록 리소스 등록
+    server.resource(
+        'servers-list',
+        'server://list',
+        async (uri) => {
             return {
-                content: [
+                contents: [
                     {
-                        type: 'text' as const,
-                        text: `이미지 생성 중 오류가 발생했습니다: ${errorMessage}`
+                        uri: uri.href,
+                        mimeType: 'application/json',
+                        text: JSON.stringify(fakeServers, null, 2)
                     }
                 ]
             }
         }
-    }
-)
+    )
 
-// 서버 시작
-async function main() {
-    const transport = new StdioServerTransport()
-    await server.connect(transport)
-    console.error('Greeting MCP Server is running...')
+    // 개별 서버 정보 리소스 템플릿 등록
+    server.resource(
+        'server-info',
+        'server://info/{serverId}',
+        async (uri) => {
+            const serverId = uri.pathname.split('/').pop()
+            const serverInfo = fakeServers.find(s => s.id === serverId)
+            
+            if (!serverInfo) {
+                return {
+                    contents: [
+                        {
+                            uri: uri.href,
+                            mimeType: 'application/json',
+                            text: JSON.stringify({ error: `서버를 찾을 수 없습니다: ${serverId}` })
+                        }
+                    ]
+                }
+            }
+            
+            return {
+                contents: [
+                    {
+                        uri: uri.href,
+                        mimeType: 'application/json',
+                        text: JSON.stringify(serverInfo, null, 2)
+                    }
+                ]
+            }
+        }
+    )
+
+    // 서버 상태 요약 리소스 등록
+    server.resource(
+        'servers-status',
+        'server://status',
+        async (uri) => {
+            const statusSummary = {
+                total: fakeServers.length,
+                running: fakeServers.filter(s => s.status === 'running').length,
+                stopped: fakeServers.filter(s => s.status === 'stopped').length,
+                maintenance: fakeServers.filter(s => s.status === 'maintenance').length,
+                lastUpdated: new Date().toISOString()
+            }
+            
+            return {
+                contents: [
+                    {
+                        uri: uri.href,
+                        mimeType: 'application/json',
+                        text: JSON.stringify(statusSummary, null, 2)
+                    }
+                ]
+            }
+        }
+    )
+
+    // greeting 도구 등록
+    server.tool(
+        'greeting',
+        '사용자의 이름과 언어를 입력받아 해당 언어로 인사말을 반환합니다.',
+        {
+            name: z.string().describe('인사할 사용자의 이름'),
+            language: z.enum(['korean', 'english', 'japanese', 'chinese', 'spanish', 'french', 'german'])
+                .describe('인사말에 사용할 언어 (korean, english, japanese, chinese, spanish, french, german)')
+        },
+        async ({ name, language }) => {
+            const greetingFn = greetings[language]
+            
+            if (!greetingFn) {
+                return {
+                    content: [
+                        {
+                            type: 'text' as const,
+                            text: `지원하지 않는 언어입니다: ${language}`
+                        }
+                    ]
+                }
+            }
+
+            const message = greetingFn(name)
+            
+            return {
+                content: [
+                    {
+                        type: 'text' as const,
+                        text: message
+                    }
+                ]
+            }
+        }
+    )
+
+    // get_time 도구 등록
+    server.tool(
+        'get_time',
+        '지역 이름을 입력받아 해당 지역의 현재 시간을 반환합니다.',
+        {
+            region: z.string().describe('시간을 알고 싶은 지역 이름 (예: seoul, 서울, tokyo, 도쿄, new_york, 뉴욕, london, 런던 등)')
+        },
+        async ({ region }) => {
+            const normalizedRegion = region.toLowerCase().trim().replace(/\s+/g, '_')
+            const timezone = timezones[normalizedRegion]
+            
+            if (!timezone) {
+                const availableRegions = Object.keys(timezones).join(', ')
+                return {
+                    content: [
+                        {
+                            type: 'text' as const,
+                            text: `지원하지 않는 지역입니다: ${region}\n\n지원하는 지역 목록:\n${availableRegions}`
+                        }
+                    ]
+                }
+            }
+
+            const now = new Date()
+            const options: Intl.DateTimeFormatOptions = {
+                timeZone: timezone,
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }
+            
+            const formatter = new Intl.DateTimeFormat('ko-KR', options)
+            const formattedTime = formatter.format(now)
+            
+            return {
+                content: [
+                    {
+                        type: 'text' as const,
+                        text: `📍 ${region} (${timezone})\n🕐 현재 시간: ${formattedTime}`
+                    }
+                ]
+            }
+        }
+    )
+
+    // calc 도구 등록
+    server.tool(
+        'calc',
+        '두 개의 숫자와 하나의 연산자를 입력받아 계산 결과를 반환합니다.',
+        {
+            num1: z.number().describe('첫 번째 숫자'),
+            num2: z.number().describe('두 번째 숫자'),
+            operator: z.enum(['+', '-', '*', '/']).describe('연산자 (+, -, *, /)')
+        },
+        async ({ num1, num2, operator }) => {
+            let result: number
+
+            switch (operator) {
+                case '+':
+                    result = num1 + num2
+                    break
+                case '-':
+                    result = num1 - num2
+                    break
+                case '*':
+                    result = num1 * num2
+                    break
+                case '/':
+                    if (num2 === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: 'text' as const,
+                                    text: '오류: 0으로 나눌 수 없습니다.'
+                                }
+                            ]
+                        }
+                    }
+                    result = num1 / num2
+                    break
+            }
+
+            return {
+                content: [
+                    {
+                        type: 'text' as const,
+                        text: `${num1} ${operator} ${num2} = ${result}`
+                    }
+                ]
+            }
+        }
+    )
+
+    // generate_image 도구 등록
+    server.tool(
+        'generate_image',
+        '텍스트 프롬프트를 입력받아 AI로 이미지를 생성합니다.',
+        {
+            prompt: z.string().describe('생성할 이미지에 대한 설명 (영어 권장)')
+        },
+        async ({ prompt }) => {
+            try {
+                // config에서 hfToken을 가져오거나 환경변수에서 가져옴
+                const hfToken = config?.hfToken || process.env.HF_TOKEN
+                
+                if (!hfToken) {
+                    return {
+                        content: [
+                            {
+                                type: 'text' as const,
+                                text: '오류: Hugging Face API Token이 설정되지 않았습니다. 서버 설정에서 hfToken을 제공하거나 HF_TOKEN 환경변수를 설정해주세요.'
+                            }
+                        ]
+                    }
+                }
+                
+                const client = new InferenceClient(hfToken)
+                
+                const image = await client.textToImage({
+                    provider: 'hf-inference',
+                    model: 'black-forest-labs/FLUX.1-schnell',
+                    inputs: prompt,
+                    parameters: { num_inference_steps: 5 }
+                }) as unknown as Blob
+                
+                // Blob을 ArrayBuffer로 변환 후 base64로 인코딩
+                const arrayBuffer = await image.arrayBuffer()
+                const base64Data = Buffer.from(arrayBuffer).toString('base64')
+                
+                return {
+                    content: [
+                        {
+                            type: 'image' as const,
+                            data: base64Data,
+                            mimeType: 'image/png',
+                            annotations: {
+                                audience: ['user'],
+                                priority: 0.9
+                            }
+                        }
+                    ]
+                }
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+                return {
+                    content: [
+                        {
+                            type: 'text' as const,
+                            text: `이미지 생성 중 오류가 발생했습니다: ${errorMessage}`
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    // Must return the MCP server object
+    return server.server
 }
-
-main().catch(console.error)
-
-
-
