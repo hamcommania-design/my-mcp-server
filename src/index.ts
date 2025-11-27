@@ -156,12 +156,7 @@ export default function createServer({ config }: { config: z.infer<typeof config
     // Create server instance
     const server = new McpServer({
         name: 'my-mcp-server',
-        version: '1.0.0',
-        capabilities: {
-            tools: {},
-            resources: {},
-            prompts: {}
-        }
+        version: '1.0.0'
     })
 
     // code_review 프롬프트 등록
@@ -476,5 +471,5 @@ ${code}
     )
 
     // Must return the MCP server object
-    return server.server
+    return server
 }
